@@ -1,0 +1,61 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: arunabstruce/devops-manifest-be:latest
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+    ports:
+      - "5000:5000"        # expose only if needed; optional for internal-only deployments
+    networks:
+      - app-net
+    restart: unless-stopped
+    # healthcheck:
+    #   test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+    #   interval: 10s
+    #   timeout: 5s
+    #   retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: arunabstruce/devops-manifest-fe:latest
+    # depends_on:
+    #   backend:
+    #     condition: service_healthy
+    ports:
+      - "80:80"
+    networks:
+      - app-net
+    restart: unless-stopped
+    # frontend doesn't need a healthcheck that depends on backend; compose will start it when backend healthy
+
+networks:
+  app-net:
+    driver: bridge
+
+
+
+
+# version: '3'
+# services:
+#   frontend:
+#     build: ./frontend
+#     ports:
+#       - "3000:3000"
+#     volumes:
+#       - ./frontend:/app
+#     command: ["npm", "start"]
+#   backend:
+#     build: ./backend
+#     dockerfile: Dockerfile
+#     image: arunabstruce/devops-manifest-be:latest
+    
+#     ports:
+#       - "5000:5000"
+#     volumes:
+#       - ./backend:/app
+#     command: ["npm", "start"]
