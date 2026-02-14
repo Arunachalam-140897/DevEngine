@@ -1,61 +1,166 @@
+######## Below is for docker compose pupose only, not for docker swarm deployment ########
+version: '3.8'
 services:
-  backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
-    image: arunabstruce/devops-manifest-be:latest
+  postgres:
+    image: postgres:15-alpine
     environment:
-      - NODE_ENV=production
-      - PORT=5000
-    ports:
-      - "5000:5000"        # expose only if needed; optional for internal-only deployments
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: devengine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     networks:
       - app-net
     restart: unless-stopped
-    # healthcheck:
-    #   test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
-    #   interval: 10s
-    #   timeout: 5s
-    #   retries: 5
+    profiles: ["dev", "prod"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5 
+
+  backend:
+    build:
+      context: ./backend
+    image: arunabstruce/devops-manifest-be:latest
+    environment:
+      NODE_ENV: production
+      PORT: 5001
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/devengine
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "5001:5001"
+    networks:
+      - app-net
+    restart: unless-stopped
+    profiles: ["dev", "prod"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5001/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 512m 
+    cpus: 0.5 
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     image: arunabstruce/devops-manifest-fe:latest
-    # depends_on:
-    #   backend:
-    #     condition: service_healthy
+    depends_on:
+      - backend
     ports:
       - "80:80"
     networks:
       - app-net
     restart: unless-stopped
-    # frontend doesn't need a healthcheck that depends on backend; compose will start it when backend healthy
+    profiles: ["prod"]
 
 networks:
   app-net:
     driver: bridge
 
+volumes:
+  postgres_data:
 
 
 
-# version: '3'
+
+##############################################################################################################
+
+
+
+
+# ## update nginx.conf for backend to use devengine_backend for docker compose, and backend for docker swarm
+# ## update package.json for backend to use devengine_backend for docker compose, and backend for docker swarm
 # services:
-#   frontend:
-#     build: ./frontend
-#     ports:
-#       - "3000:3000"
+#   postgres:
+#     image: postgres:15-alpine
+#     environment:
+#       POSTGRES_USER: postgres
+#       POSTGRES_PASSWORD: postgres
+#       POSTGRES_DB: devengine
 #     volumes:
-#       - ./frontend:/app
-#     command: ["npm", "start"]
+#       - postgres_data:/var/lib/postgresql/data
+#     networks:
+#       - app-net
+#     restart: unless-stopped
+#     # healthcheck:
+#     #   test: ["CMD-SHELL", "pg_isready -U postgres"]
+#     #   interval: 10s
+#     #   timeout: 5s
+#     #   retries: 5
+#     deploy:
+#       replicas: 1
+#       placement:
+#         constraints:
+#           - node.role == manager  
+
 #   backend:
-#     build: ./backend
-#     dockerfile: Dockerfile
 #     image: arunabstruce/devops-manifest-be:latest
-    
+#     environment:
+#       NODE_ENV: production
+#       PORT: 5001
+#       DATABASE_URL: postgres://postgres:postgres@postgres:5432/devengine
+#     depends_on:
+#      - postgres
 #     ports:
-#       - "5000:5000"
-#     volumes:
-#       - ./backend:/app
-#     command: ["npm", "start"]
+#       - "5001:5001"
+#     networks:
+#       app-net:
+#         aliases:
+#           - backend
+#     restart: unless-stopped
+#     # healthcheck:
+#     #   test: ["CMD", "wget", "-qO-", "http://devengine_backend:5001/health"]
+#     #   interval: 10s
+#     #   timeout: 3s
+#     #   retries: 5
+#     deploy:
+#       replicas: 2
+#       update_config:
+#         parallelism: 1
+#         delay: 10s
+#         order: start-first   # zero-downtime
+#       restart_policy:
+#         condition: on-failure
+#       resources:
+#         limits:
+#           cpus: "0.50"
+#           memory: 512M
+#         reservations:
+#           cpus: "0.25"
+#           memory: 256M
+
+#   frontend:
+#     image: arunabstruce/devops-manifest-fe:latest
+#     depends_on:
+#       - backend
+#     ports:
+#       - "8080:80"
+#     networks:
+#       - app-net
+#     restart: unless-stopped
+#     deploy:
+#       replicas: 2
+#       update_config:
+#         parallelism: 1
+#         delay: 10s
+#         order: start-first   # zero-downtime
+#       restart_policy:
+#         condition: on-failure
+#       resources:
+#         limits:
+#           cpus: "0.50"
+#           memory: 512M
+#         reservations:
+#           cpus: "0.25"
+#           memory: 256M
+
+# networks:
+#   app-net:
+#     external: true
+# volumes:
+#   postgres_data:

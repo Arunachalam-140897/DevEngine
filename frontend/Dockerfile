@@ -1,7 +1,8 @@
-FROM node:slim AS builder
+FROM node:20-alpine AS builder
+
 WORKDIR /app
 COPY package*.json ./
-RUN npm install --silent
+RUN npm install --silent --only=production
 COPY . .
 RUN npm run build
 

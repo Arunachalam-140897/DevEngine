@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import JSZip from 'jszip';
@@ -130,6 +130,9 @@ function KubernetesGenerator() {
   const [errors, setErrors] = useState([]);
   const [loading, setLoading] = useState(false);
   const [files, setFiles] = useState(null);
+  const [savedTemplates, setSavedTemplates] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [selectedTemplateContent, setSelectedTemplateContent] = useState(null);
   const [presetKey, setPresetKey] = useState('none');
 
   const applyPreset = (key) => {
@@ -314,6 +317,62 @@ function KubernetesGenerator() {
   const handleCopy = (content) => {
     navigator.clipboard.writeText(content);
     alert('Copied to clipboard');
+  };
+
+  const combineFiles = (filesMap) => {
+    if (!filesMap) return '';
+    return Object.entries(filesMap)
+      .map(([filename, content]) => `# --- ${filename} ---\n${content.trim()}`)
+      .join('\n\n---\n\n');
+  };
+
+  const handleCopyAll = () => {
+    const combined = combineFiles(files);
+    handleCopy(combined);
+  };
+
+  const fetchSavedTemplates = async () => {
+    try {
+      const res = await axios.get('/api/templates');
+      if (res.data.success) setSavedTemplates(res.data.templates || []);
+    } catch (err) {
+      console.warn('failed to fetch templates', err.message || err);
+    }
+  };
+
+  useEffect(() => {
+    fetchSavedTemplates();
+  }, []);
+
+  const handleSaveTemplate = async () => {
+    if (!files) return alert('Generate manifests first');
+    const name = window.prompt('Enter a name for this template');
+    if (!name || !name.trim()) return;
+    const content = combineFiles(files);
+    try {
+      const res = await axios.post('/api/templates', { name: name.trim(), content });
+      if (res.data.success) {
+        alert('Template saved');
+        fetchSavedTemplates();
+      } else {
+        alert('Save failed: ' + (res.data.error || 'unknown'));
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Save failed: ' + (err.response?.data?.error || err.message || 'error'));
+    }
+  };
+
+  const handleSelectTemplate = async (id) => {
+    try {
+      const res = await axios.get(`/api/templates/${id}`);
+      if (res.data.success && res.data.template) {
+        setSelectedTemplate(res.data.template);
+        setSelectedTemplateContent(res.data.template.content);
+      }
+    } catch (err) {
+      console.warn('failed to load template', err.message || err);
+    }
   };
 
   const handleDownloadAll = async () => {
@@ -707,7 +766,7 @@ function KubernetesGenerator() {
                   />
                   <button
                     type="button"
-                    onClick={() => removeKeyValue(index, 'env', rIndex)}
+                    onClick={() => removeKeyValue(index, 'secretData', rIndex)}
                     className="action-btn-danger"
                   >
                     ✕
@@ -780,7 +839,7 @@ function KubernetesGenerator() {
                   />
                   <button
                     type="button"
-                    onClick={() => removeKeyValue(index, 'env', rIndex)}
+                    onClick={() => removeKeyValue(index, 'configMapData', rIndex)}
                     className="action-btn-danger"
                   >
                     ✕
@@ -1408,6 +1467,93 @@ function KubernetesGenerator() {
         )}
       </div>
 
+      {/* Saved templates section */}
+      <div style={{ marginTop: '1rem' }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '0.5rem',
+          }}
+        >
+          <h2 style={{ fontSize: '0.95rem', fontWeight: 600 }}>Saved Templates</h2>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button className="action-btn" onClick={fetchSavedTemplates}>
+              Refresh
+            </button>
+          </div>
+        </div>
+
+        {savedTemplates.length === 0 && (
+          <p style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+            No saved templates yet. Save a generated manifest to create one.
+          </p>
+        )}
+
+        {savedTemplates.map((t) => (
+          <div
+            key={t.id}
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '0.45rem',
+              border: '1px solid #111827',
+              borderRadius: 8,
+              marginBottom: 6,
+              background: selectedTemplate?.id === t.id ? '#071133' : 'transparent',
+              cursor: 'pointer',
+            }}
+            onClick={() => handleSelectTemplate(t.id)}
+          >
+            <div>
+              <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{t.name}</div>
+              <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                {new Date(t.created_at).toLocaleString()}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                className="action-btn"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSelectTemplate(t.id);
+                }}
+              >
+                View
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {selectedTemplateContent && (
+          <div style={{ marginTop: 10 }}>
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: 6,
+              }}
+            >
+              <strong>{selectedTemplate?.name}</strong>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className="action-btn"
+                  onClick={() => handleCopy(selectedTemplateContent)}
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+            <div style={{ border: '1px solid #111827', borderRadius: 8, overflow: 'hidden' }}>
+              <SyntaxHighlighter language="yaml">{selectedTemplateContent}</SyntaxHighlighter>
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* RIGHT: output */}
       <div>
         <div
@@ -1420,14 +1566,26 @@ function KubernetesGenerator() {
         >
           <h2 style={{ fontSize: '0.95rem', fontWeight: 600 }}>Generated Manifests</h2>
           <div style={{ display: 'flex', gap: '0.4rem' }}>
-            <button
-              type="button"
-              onClick={() => handleCopy(content)}
-              className="action-btn"
-              style={{ fontSize: '0.7rem' }}
-            >
-              Copy
-            </button>
+            {files && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleCopyAll}
+                  className="action-btn"
+                  style={{ fontSize: '0.7rem' }}
+                >
+                  Copy All
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveTemplate}
+                  className="action-btn"
+                  style={{ fontSize: '0.7rem' }}
+                >
+                  Save Template
+                </button>
+              </>
+            )}
 
           </div>
         </div>

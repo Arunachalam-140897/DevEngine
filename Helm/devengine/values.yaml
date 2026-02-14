@@ -1,0 +1,43 @@
+frontend:
+  image: arunabstruce/devops-manifest-fe:latest
+  replicas: 2
+  service:
+    type: ClusterIP
+    port: 80
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+
+backend:
+  image: arunabstruce/devops-manifest-be:latest
+  replicas: 2
+  service:
+    type: ClusterIP
+    port: 5001
+  env:
+    NODE_ENV: production
+    PORT: "5001"
+    DATABASE_URL: postgres://postgres:postgres@postgres:5432/devengine
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  probes:
+    path: /api/health
+
+postgres:
+  image: postgres:15-alpine
+  replicas: 1
+  env:
+    POSTGRES_USER: postgres
+    POSTGRES_PASSWORD: postgres
+    POSTGRES_DB: devengine
+  storage:
+    size: 1Gi
